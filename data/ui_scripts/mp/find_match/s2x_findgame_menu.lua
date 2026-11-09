@@ -194,6 +194,7 @@ local function configure_zombies_buttons( menu, controller, labels )
 	find_match_state.controllerIndex = controller
 
 	set_find_match_data_sources( controller )
+	print( "[wwz-mod] Zombies playlists restored: Server Browser, Custom Match, Mods, Replay Prologue" )
 end
 
 local function apply_find_match_labels( menu, labels )

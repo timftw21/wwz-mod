@@ -8,6 +8,7 @@
 #include "component/network.hpp"
 #include "component/scheduler.hpp"
 #include "component/pause_coop.hpp"
+#include "component/scoreboard_ping.hpp"
 #include "game/game.hpp"
 #include "game/demonware/runtime_context.hpp"
 
@@ -303,7 +304,7 @@ namespace reward_event_relay
 		void deploy(const unsigned int local_client)
 		{
 			const command::params args;
-			if (pause::coop::receive(local_client, args) ||
+			if (pause::coop::receive(local_client, args) || scoreboard_ping::receive(local_client, args) ||
 				match_drops::receive(local_client, args) || commendations::receive(local_client, args))
 			{
 				return;
@@ -338,6 +339,7 @@ namespace reward_event_relay
 			if (!local_client)
 			{
 				pause::coop::disconnect();
+				scoreboard_ping::disconnect();
 				commendations::disconnect();
 				order_progress::disconnect();
 			}

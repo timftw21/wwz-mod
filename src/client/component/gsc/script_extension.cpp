@@ -320,9 +320,17 @@ namespace gsc
 		}
 
 		std::unordered_map<const char*, const char*> replaced_functions;
+		const game::dvar_t* jumpscares_enabled{};
+		const char* jumpscare_roll{};
+		const char* skip_jumpscare{};
 
 		const char* get_replaced_function(const char* pos)
 		{
+			if (pos == jumpscare_roll && skip_jumpscare && !jumpscares_enabled->current.enabled)
+			{
+				return skip_jumpscare;
+			}
+
 			if (replaced_functions.empty())
 			{
 				return nullptr;
@@ -366,6 +374,26 @@ namespace gsc
 			}
 
 			return value->u.codePosValue;
+		}
+
+		void register_jumpscare_gate()
+		{
+			if (!game::environment::is_zombies())
+			{
+				return;
+			}
+
+			const auto* roll = get_code_pos(0);
+			const auto* skip = get_code_pos(1);
+			if (!jumpscares_enabled || !roll || !skip || roll == skip)
+			{
+				console::warn("Could not register the Zombies jumpscare gate.\n");
+				return;
+			}
+
+			jumpscare_roll = roll;
+			skip_jumpscare = skip;
+			console::debug("Registered the optional Zombies jumpscare gate.\n");
 		}
 
 		void scr_replace_func()
@@ -454,12 +482,20 @@ namespace gsc
 
 			if (game::environment::uses_multiplayer_binary())
 			{
+				game::Dvar_RegisterBool("wwz_zm_map_locations", true, game::DVAR_FLAG_SAVED);
+				game::Dvar_RegisterBool("wwz_zm_notification_feed", true, game::DVAR_FLAG_SAVED);
+				game::Dvar_RegisterBool("wwz_zm_objective_text", true, game::DVAR_FLAG_SAVED);
+				jumpscares_enabled = game::Dvar_RegisterBool("wwz_zm_jumpscares", true, game::DVAR_FLAG_SAVED);
+
 				add_function("replacefunc", scr_replace_func);
+				add_function("wwz_register_jumpscare_gate", register_jumpscare_gate);
 				utils::hook::jump(0x692540_g, utils::hook::assemble(vm_execute_stub));
 
 				scripting::on_shutdown([](int)
 				{
 					replaced_functions.clear();
+					jumpscare_roll = nullptr;
+					skip_jumpscare = nullptr;
 				});
 			}
 		}

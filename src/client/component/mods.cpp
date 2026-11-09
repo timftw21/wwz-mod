@@ -50,7 +50,24 @@ namespace mods
 			error.clear();
 			const auto has_zone = std::filesystem::is_directory(path / "zone", error) && !error;
 
-			return has_scripts || has_ui_scripts || has_zone;
+			if (has_scripts || has_ui_scripts || has_zone)
+			{
+				return true;
+			}
+
+			// Stock replacements use their original asset paths, without an
+			// add-on entry point or one prescribed top-level folder.
+			for (std::filesystem::recursive_directory_iterator it(path,
+				std::filesystem::directory_options::skip_permission_denied, error), end;
+				!error && it != end; it.increment(error))
+			{
+				if (it->is_regular_file(error) &&
+					(it->path().extension() == ".lua" || it->path().extension() == ".gsc"))
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		std::filesystem::path get_mod_path(const std::string& name)
@@ -317,7 +334,7 @@ namespace mods
 
 		if (!is_safe_mod_name(name) || !is_supported_mod_folder(get_mod_path(name)))
 		{
-			console::warn("[Mods] '%s' is not a valid S2x mod folder. Expected s2x/mods/<name>/scripts, ui_scripts or zone.\n", name.data());
+			console::warn("[Mods] '%s' is not a valid S2x mod folder. Expected GSC/Lua sources or a zone folder inside s2x/mods/<name>.\n", name.data());
 			return;
 		}
 

@@ -12,6 +12,8 @@
 
 #include "filesystem.hpp"
 #include "ui_scripting.hpp"
+#include "scoreboard_ping.hpp"
+#include "script_paths.hpp"
 
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
@@ -34,6 +36,54 @@ namespace ui_scripting
 			std::string name;
 			std::string root;
 		};
+
+		static_assert(sizeof(game::LuaFile) == 0x18);
+		static_assert(offsetof(game::LuaFile, buffer) == 0x10);
+
+		struct stock_script
+		{
+			std::string name;
+			std::string source;
+			game::LuaFile asset{};
+
+			stock_script(std::string script_name, std::string data)
+				: name(std::move(script_name)), source(std::move(data))
+			{
+				asset.name = name.c_str();
+				asset.len = static_cast<int>(source.size());
+				asset.buffer = source.c_str();
+			}
+		};
+
+		// Stable asset buffers for the synchronous DB lookup/reader/compiler path.
+		// A UI restart drops them so edits and a newly mounted mod are re-read.
+		thread_local std::unordered_map<std::string, std::unique_ptr<stock_script>> stock_scripts;
+		thread_local stock_script* pending_stock_script{};
+
+		stock_script* find_stock_script(const char* name)
+		{
+			const auto asset_name = script_paths::lua_asset_name(name);
+			if (asset_name.empty()) return nullptr;
+
+			if (const auto found = stock_scripts.find(asset_name); found != stock_scripts.end())
+			{
+				return found->second.get();
+			}
+
+			std::string data, real_path;
+			if (!filesystem::read_file(asset_name, &data, &real_path)) return nullptr;
+			if (data.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+			{
+				console::error("Lua override '%s' is too large.\n", real_path.c_str());
+				return nullptr;
+			}
+
+			auto entry = std::make_unique<stock_script>(asset_name, std::move(data));
+			auto* result = entry.get();
+			stock_scripts.emplace(asset_name, std::move(entry));
+			console::info("Loading stock Lua override '%s' from '%s'\n", asset_name.c_str(), real_path.c_str());
+			return result;
+		}
 
 		struct globals_s
 		{
@@ -305,6 +355,16 @@ namespace ui_scripting
 			{
 				return ::game::environment::is_multiplayer();
 			};
+
+			game_type["requestscoreboardpings"] = [](const game&)
+			{
+				scoreboard_ping::request();
+			};
+
+			game_type["getscoreboardping"] = [](const game&, const int client_num, const bool local_player)
+			{
+				return scoreboard_ping::get(client_num, local_player);
+			};
 		}
 
 		void run_start_callbacks()
@@ -385,12 +445,14 @@ namespace ui_scripting
 
 		void hks_shutdown_stub()
 		{
+			// Keep source buffers and callbacks alive through the engine's teardown.
+			hks_shutdown_hook.invoke<void>();
 			active_lua_state = nullptr;
 			converted_functions.clear();
 			state_globals.clear();
+			pending_stock_script = nullptr;
+			stock_scripts.clear();
 			debug::clear();
-
-			return hks_shutdown_hook.invoke<void>();
 		}
 
 		int hks_package_require_stub(game::hks::lua_State* state)
@@ -409,12 +471,14 @@ namespace ui_scripting
 				auto previous_require_script = globals.in_require_script;
 				auto previous_raw_script_name = globals.raw_script_name;
 				const auto previous_load_raw_script = globals.load_raw_script;
+				auto* const previous_stock_script = pending_stock_script;
 
 				const auto restore_state = utils::finally([&]()
 				{
 					globals.in_require_script.swap(previous_require_script);
 					globals.raw_script_name.swap(previous_raw_script_name);
 					globals.load_raw_script = previous_load_raw_script;
+					pending_stock_script = previous_stock_script;
 					active_lua_state = previous_active_state;
 				});
 
@@ -422,6 +486,7 @@ namespace ui_scripting
 				globals.in_require_script = root;
 				globals.load_raw_script = false;
 				globals.raw_script_name.clear();
+				pending_stock_script = nullptr;
 
 				const auto nargs = static_cast<int>(state->m_apistack.top - state->m_apistack.base);
 				reserve_stack(state, 1);
@@ -455,45 +520,38 @@ namespace ui_scripting
 
 		game::XAssetHeader db_find_x_asset_header_stub(game::XAssetType type, const char* name, int allow_create_default)
 		{
-			game::XAssetHeader header{ .luaFile = nullptr };
-
-			if (!active_lua_state || !name)
+			if (type != game::ASSET_TYPE_LUAFILE || !name)
 			{
 				return game::DB_FindXAssetHeader(type, name, allow_create_default);
 			}
 
-			if (type != game::ASSET_TYPE_LUAFILE)
+			pending_stock_script = nullptr;
+
+			// Preserve package-local imports before consulting canonical stock paths.
+			if (active_lua_state)
 			{
-				return game::DB_FindXAssetHeader(type, name, allow_create_default);
+				auto& globals = get_globals(active_lua_state);
+				const auto root = normalize_script_path(globals.in_require_script);
+				const auto folder_end = root.find_last_of('/');
+				if (is_loaded_script(globals, root) && folder_end != std::string::npos)
+				{
+					const auto target = find_local_script(root.substr(0, folder_end), normalize_script_path(name));
+					if (!target.empty())
+					{
+						globals.load_raw_script = true;
+						globals.raw_script_name = target;
+						return { .luaFile = reinterpret_cast<game::LuaFile*>(1) };
+					}
+				}
 			}
 
-			auto& globals = get_globals(active_lua_state);
-
-			const auto require_script = normalize_script_path(globals.in_require_script);
-
-			if (require_script.empty() || !is_loaded_script(globals, require_script))
+			// These loader call sites also run during stock startup, before custom
+			// packages exist. Return a real LuaFile, including for new dependencies.
+			if (auto* source = find_stock_script(name))
 			{
-				return game::DB_FindXAssetHeader(type, name, allow_create_default);
+				pending_stock_script = source;
+				return { .luaFile = &source->asset };
 			}
-
-			const auto folder_end = require_script.find_last_of('/');
-			if (folder_end == std::string::npos)
-			{
-				return game::DB_FindXAssetHeader(type, name, allow_create_default);
-			}
-
-			const auto folder = require_script.substr(0, folder_end);
-			const auto name_ = normalize_script_path(name);
-			const auto target_script = find_local_script(folder, name_);
-
-			if (!target_script.empty())
-			{
-				globals.load_raw_script = true;
-				globals.raw_script_name = target_script;
-				header.luaFile = reinterpret_cast<game::LuaFile*>(1);
-				return header;
-			}
-
 			return game::DB_FindXAssetHeader(type, name, allow_create_default);
 		}
 
@@ -502,6 +560,7 @@ namespace ui_scripting
 		{
 			try
 			{
+				const auto* stock = std::exchange(pending_stock_script, nullptr);
 				auto& globals = get_globals(state);
 				const auto previous_active_state = active_lua_state;
 
@@ -529,7 +588,15 @@ namespace ui_scripting
 				}
 				else
 				{
-					return game::hks::load(state, compiler_options, reader, reader_data, chunk_name);
+					if (!stock)
+					{
+						return game::hks::load(state, compiler_options, reader, reader_data, chunk_name);
+					}
+
+					// Bind the source to the DB request, independent of the engine's
+					// diagnostic chunk label. The caller still owns execution and caching.
+					const auto result = load_buffer(state, stock->name, stock->source);
+					if (result == 0) return result;
 				}
 			}
 			catch (const std::exception& e)

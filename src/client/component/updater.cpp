@@ -119,9 +119,16 @@ namespace updater
 
 			cleanup_previous_binary();
 
-			if (!utils::flags::has_flag("-noupdate"))
+			if constexpr (automatic_updates_enabled)
 			{
-				perform_update();
+				if (!utils::flags::has_flag("-noupdate"))
+				{
+					perform_update();
+				}
+			}
+			else
+			{
+				console::info("[Updater] Automatic update checks are disabled for wwz-mod.\n");
 			}
 
 			if (binary_was_replaced)
@@ -141,6 +148,11 @@ namespace updater
 
 	void update_store_runtime(const std::filesystem::path& base, const std::string& required_file)
 	{
+		if (!automatic_updates_enabled)
+		{
+			throw std::runtime_error("Automatic runtime downloads are disabled for wwz-mod.");
+		}
+
 		const utils::named_mutex update_mutex{get_update_mutex_name()};
 		const std::unique_lock update_lock{update_mutex};
 

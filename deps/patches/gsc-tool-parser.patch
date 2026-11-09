@@ -1,0 +1,50 @@
+diff --git a/src/gsc/parser.cpp b/src/gsc/parser.cpp
+index 0506772..92b817c 100644
+--- a/src/gsc/parser.cpp
++++ b/src/gsc/parser.cpp
+@@ -218,8 +218,6 @@ auto parser::parse_source(std::string const& name, u8 const* data, const usize s
+     advance();
+ 
+     return parse_program();
+-
+-    error(std::format("an unknown error ocurred while parsing script {}", name));
+ }
+ 
+ auto parser::parse_program() -> program::ptr
+@@ -1382,7 +1380,7 @@ auto parser::parse_expr_primary() -> expr::ptr
+             {
+                 advance();
+                 advance();
+-                return expr_empty_array::make(loc);
++                return parse_expr_postfix(expr_empty_array::make(loc));
+             }
+ 
+             // always parse as add_array: [expr, expr, ...]
+@@ -1405,7 +1403,7 @@ auto parser::parse_expr_primary() -> expr::ptr
+                 }
+             }
+ 
+-            return node;
++            return parse_expr_postfix(std::move(node));
+         }
+ 
+         case token::LPAREN:
+@@ -2179,16 +2177,11 @@ auto parser::is_lvalue(expr const& exp) const -> bool
+ 
+ auto parser::is_no_call_chain(expr const& exp) const -> bool
+ {
+-    if (exp.is<expr_call>() || exp.is<expr_method>())
+-        return false;
+-
+     if (exp.is<expr_array>())
+         return is_no_call_chain(*exp.as<expr_array>().obj);
+ 
+-    if (exp.is<expr_field>())
+-        return is_no_call_chain(*exp.as<expr_field>().obj);
+-
+-    return true;
++    // A field supplies a reference even when its object is returned by a call.
++    return exp.is<expr_field>() || exp.is<expr_identifier>() || exp.is<expr_game>();
+ }
+ 
+ auto parser::is_call_or_method(expr const& exp) const -> bool

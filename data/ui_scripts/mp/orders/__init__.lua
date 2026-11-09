@@ -43,12 +43,27 @@ if not Engine.IsZombiesMode() then
 	return
 end
 
+local inventory_source = ARCHETYPES.Order(
+	LUI.DataSourceInControllerModel.new( "cg.Shared.MP.DailyOrders.zombiesInventoryDescription" ) )
 local stock_description = builders.daily_orders_descriptions
 builders.daily_orders_descriptions = function ( ... )
 	local description = stock_description( ... )
+	local set_data_source = description.SetDataSource
 	local update_progress = description.UpdateProgressBar
 	local set_countdown = description.SetCountdownTimer
 	local order_kind
+
+	description.SetDataSource = function ( self, source, controller )
+		local parent = self:getParent()
+		if parent and parent.id == "periodicChallengeInventory"
+			and source == DataSources.Shared.MP.DailyOrders.challengeDescription then
+			-- Bind before the stock menu sets its initial selection. Closing
+			-- Special Zombies Order clears the shared contracts details model.
+			source = inventory_source
+			print( "[wwz-mod] Bound Zombies Orders to its own details model" )
+		end
+		return set_data_source( self, source, controller )
+	end
 
 	description.UpdateProgressBar = function ( self, controller, order_type, ... )
 		order_kind = nil

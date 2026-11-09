@@ -4,6 +4,8 @@
 #include "game/game.hpp"
 
 #include "console/console.hpp"
+#include "prompt_text.hpp"
+#include "zombies_subtitle_text.hpp"
 
 #include <utils/hook.hpp>
 
@@ -45,7 +47,18 @@ namespace asset_overrides
 				}
 			}
 
-			return db_find_xasset_header_hook.invoke<game::XAssetHeader>(type, name, allow_create_default);
+			auto header = db_find_xasset_header_hook.invoke<game::XAssetHeader>(type, name, allow_create_default);
+			if (type == game::ASSET_TYPE_LOCALIZE && game::environment::uses_multiplayer_binary() &&
+				!game::environment::is_dedicated())
+			{
+				// Scripted hold hints resolve assets directly, alongside the regular text lookup.
+				header.localize = prompt_text::format_entry(header.localize);
+				if (game::environment::is_zombies())
+				{
+					header.localize = zombies_subtitle_text::format_entry(header.localize);
+				}
+			}
+			return header;
 		}
 	}
 
@@ -55,6 +68,11 @@ namespace asset_overrides
 		void post_unpack() override
 		{
 			db_find_xasset_header_hook.create(game::DB_FindXAssetHeader, db_find_xasset_header_stub);
+			console::debug("Installed asset-level interaction prompt formatting.\n");
+			if (game::environment::is_zombies() && !game::environment::is_dedicated())
+			{
+				console::debug("Installed English Zombies subtitle corrections.\n");
+			}
 		}
 	};
 }

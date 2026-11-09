@@ -295,7 +295,7 @@ int main()
 			const auto binary_to_load = game::environment::get_binary_name(game::environment::get_mode());
 			const auto binary_path = game::environment::get_binary_path(game::environment::get_mode());
 			const auto game_directory = binary_path.parent_path();
-			const auto updates_disabled = utils::flags::has_flag("-noupdate");
+			const auto updates_disabled = !updater::automatic_updates_enabled || utils::flags::has_flag("-noupdate");
 			std::optional<std::string> store_runtime_update_warning{};
 
 			if (game::environment::is_microsoft_store() && !updates_disabled)
@@ -325,7 +325,7 @@ int main()
 				if (game::environment::is_microsoft_store())
 				{
 					const auto reason = updates_disabled
-						? "Automatic updates are disabled. Relaunch S2x without -noupdate so it can download the required runtime."
+						? "Automatic updates are disabled. Install the required Microsoft Store/Xbox runtime manually."
 						: "S2x could not download the required runtime. Check the update source and installation permissions.";
 					throw std::runtime_error(utils::string::va(
 						"S2x detected a Microsoft Store/Xbox installation, but '%s' is missing.\n\n%s\n\n"
@@ -358,7 +358,7 @@ int main()
 				}
 
 				const auto action = updates_disabled
-					? "Relaunch S2x without -noupdate so it can download a valid runtime."
+					? "Automatic updates are disabled. Install a valid Microsoft Store/Xbox runtime manually."
 					: "Check your connection and relaunch S2x so it can update the runtime.";
 				throw std::runtime_error(utils::string::va(
 					"The Microsoft Store/Xbox runtime '%s' could not be loaded.\n\n%s\n\n%s",
@@ -371,7 +371,7 @@ int main()
 				if (game::environment::is_microsoft_store())
 				{
 					const auto action = updates_disabled
-						? "Relaunch S2x without -noupdate so it can download a valid runtime."
+						? "Automatic updates are disabled. Install a valid Microsoft Store/Xbox runtime manually."
 						: "Check your connection and relaunch S2x so it can update the runtime.";
 					throw std::runtime_error(utils::string::va(
 						"The Microsoft Store/Xbox runtime '%s' could not be loaded.\n\n%s",
@@ -392,7 +392,7 @@ int main()
 				if (game::environment::is_microsoft_store())
 				{
 					const auto action = updates_disabled
-						? "Relaunch S2x without -noupdate so it can download a supported runtime."
+						? "Automatic updates are disabled. Install a supported Microsoft Store/Xbox runtime manually."
 						: "Check your connection and relaunch S2x so it can update the runtime.";
 					throw std::runtime_error(utils::string::va(
 						"The Microsoft Store/Xbox runtime '%s' is not compatible with this version of S2x.\n\n%s",

@@ -11,6 +11,7 @@
 #include "component/console/console.hpp"
 #include "component/scripting.hpp"
 #include "component/filesystem.hpp"
+#include "component/script_paths.hpp"
 
 #include "script_extension.hpp"
 #include "script_loading.hpp"
@@ -72,9 +73,20 @@ namespace gsc
 
 		bool read_raw_script_file(const std::string& name, std::string* data)
 		{
-			if (filesystem::read_file(name, data))
+			const auto script_name = std::filesystem::path(name).replace_extension().generic_string();
+			const auto id = gsc_ctx->token_id(script_name);
+			const auto numeric_name = id ? std::to_string(id) + std::filesystem::path(name).extension().string() : std::string{};
+
+			// Try both names within each root so a mod's numeric dump takes
+			// precedence over a lower-priority root's named source.
+			for (const auto& root : filesystem::get_search_paths())
 			{
-				return true;
+				if (utils::io::read_file((std::filesystem::path(root) / name).generic_string(), data) ||
+					(!numeric_name.empty() && numeric_name != name &&
+						utils::io::read_file((std::filesystem::path(root) / numeric_name).generic_string(), data)))
+				{
+					return true;
+				}
 			}
 
 			// This will prevent 'fake' GSC raw files from being compiled.
@@ -182,6 +194,7 @@ namespace gsc
 				script_file_ptr->compressedLen = 0;
 
 				loaded_scripts[real_name] = script_file_ptr;
+				console::info("Compiled GSC override '%s'\n", real_name.c_str());
 
 				const auto& devmap = std::get<2>(output_script);
 				if (devmap.size > 0 && (gsc_ctx->build() & xsk::gsc::build::dev_maps) != xsk::gsc::build::prod)
@@ -475,10 +488,9 @@ namespace gsc
 	game::ScriptFile* find_script(game::XAssetType type, const char* name, int allow_create_default)
 	{
 		std::string real_name = name;
-		const auto id = static_cast<std::uint16_t>(std::strtol(name, nullptr, 10));
-		if (id)
+		if (const auto id = script_paths::numeric_id(real_name))
 		{
-			real_name = gsc_ctx->token_name(id);
+			real_name = gsc_ctx->token_name(*id);
 		}
 
 		auto* script = load_custom_script(name, real_name);
