@@ -25,6 +25,7 @@ namespace scoreboard_ping
 		std::array<int, max_players> pings{};
 		clock::time_point next_request{};
 		clock::time_point received_at{};
+		bool logged_pending_request{};
 
 		bool playing()
 		{
@@ -74,6 +75,28 @@ namespace scoreboard_ping
 			return;
 		}
 		next_request = now + interval;
+
+		// CL_AddReliableCommand (0x606B0) queues commands even when the
+		// paused match cannot acknowledge them. Poll only after the queue drains.
+		const auto* connection = *reinterpret_cast<const std::byte* const*>(0x1BD3D00_g);
+		if (!connection)
+		{
+			return;
+		}
+
+		std::uint32_t sequence{}, acknowledged{};
+		std::memcpy(&sequence, connection + 0x134, sizeof(sequence));
+		std::memcpy(&acknowledged, connection + 0x138, sizeof(acknowledged));
+		if (sequence != acknowledged)
+		{
+			if (!logged_pending_request)
+			{
+				console::debug("Zombies scoreboard ping deferred until pending client commands are acknowledged.\n");
+				logged_pending_request = true;
+			}
+			return;
+		}
+
 		const std::string text = request_command;
 		const command::params tokens{text};
 		game::CL_ForwardCommandToServer(0, text.c_str());
@@ -149,6 +172,7 @@ namespace scoreboard_ping
 	{
 		next_request = {};
 		received_at = {};
+		logged_pending_request = false;
 	}
 
 	class component final : public multiplayer_component

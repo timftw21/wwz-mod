@@ -29,6 +29,28 @@ namespace asset_overrides
 			}
 		}
 
+		game::LocalizeEntry* format_scavenging_notification(game::LocalizeEntry* entry)
+		{
+			if (!entry || !entry->name || !entry->value)
+			{
+				return entry;
+			}
+
+			static game::LocalizeEntry ammo{"Scavenged Ammo", "ZOMBIES_NOTIFICATION_MESSAGE_HEAVY_MELEE_AMMO"};
+			static game::LocalizeEntry lethal{"Scavenged Lethal Equipment", "ZOMBIES_NOTIFICATION_MESSAGE_HEAVY_MELEE_LETHAL"};
+			const std::string_view name{entry->name};
+			const std::string_view value{entry->value};
+			if (name == ammo.name && value == "Scavenged some ammo.")
+			{
+				return &ammo;
+			}
+			if (name == lethal.name && value == "Scavenged some lethal equipment.")
+			{
+				return &lethal;
+			}
+			return entry;
+		}
+
 		game::XAssetHeader db_find_xasset_header_stub(const game::XAssetType type, const char* name, const int allow_create_default)
 		{
 			if (type == game::ASSET_TYPE_RAWFILE && name && !std::string_view(name).starts_with(override_prefix))
@@ -55,6 +77,7 @@ namespace asset_overrides
 				header.localize = prompt_text::format_entry(header.localize);
 				if (game::environment::is_zombies())
 				{
+					header.localize = format_scavenging_notification(header.localize);
 					header.localize = zombies_subtitle_text::format_entry(header.localize);
 				}
 			}
@@ -71,7 +94,7 @@ namespace asset_overrides
 			console::debug("Installed asset-level interaction prompt formatting.\n");
 			if (game::environment::is_zombies() && !game::environment::is_dedicated())
 			{
-				console::debug("Installed English Zombies subtitle corrections.\n");
+				console::debug("Installed English Zombies subtitle and scavenging text corrections.\n");
 			}
 		}
 	};

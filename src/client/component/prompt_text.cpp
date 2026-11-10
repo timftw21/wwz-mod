@@ -54,7 +54,7 @@ namespace prompt_text
 				return {};
 			}
 
-			for (const std::string_view verb : {"Press and hold", "Double tap", "Hold", "Press", "Tap", "to"})
+			for (const std::string_view verb : {"Press and hold", "Double tap", "Hold", "Press", "Tap", "Pick up", "to"})
 			{
 				if (action.size() <= verb.size() || (action[verb.size()] != ' ' && action[verb.size()] != '\t')
 					|| _strnicmp(action.data(), verb.data(), verb.size()) != 0)
@@ -64,10 +64,15 @@ namespace prompt_text
 
 				const auto leading_space = text.size() - line.size();
 				std::string result{text.substr(0, leading_space)};
-				result += verb == "to" ? "Use" : action.substr(0, verb.size());
+				const auto pickup = verb == "Pick up";
+				result += pickup ? "Press" : verb == "to" ? "Use" : action.substr(0, verb.size());
 				result += ' ';
 				result += line.substr(0, end);
 				result += ' ';
+				if (pickup)
+				{
+					result += "to pick up ";
+				}
 				result += verb == "to" ? action : trim_space(action.substr(verb.size()));
 				return result;
 			}
