@@ -6,8 +6,10 @@
 #include "unlock_zombies.hpp"
 #include "demonware/zombies_progression.hpp"
 #include "scheduler.hpp"
+#include "mode_switch.hpp"
 
 #include "game/game.hpp"
+#include "game/player_profile.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -25,6 +27,43 @@ namespace stats
 		constexpr int max_weapon_prestige = 4;
 		constexpr int challenge_target_column = 9;
 		constexpr int max_challenge_tiers = 9;
+
+		void fresh_start(const command::params& params)
+		{
+			if (params.size() != 2 || std::string_view{params[1]} != "confirm")
+			{
+				console::warn("Fresh Start permanently erases the selected profile's entire account. "
+					"Run \"freshstart confirm\" to reset and restart.\n");
+				return;
+			}
+			scheduler::once([]
+			{
+				if (!*game::frontend_state || (game::CL_IsLocalClientInGame(game::LOCAL_CLIENT_0)
+					&& !game::virtual_lobby_loaded()))
+				{
+					console::error("Fresh Start is only available from the main menu.\n");
+					return;
+				}
+				try
+				{
+					player_profile::request_fresh_start();
+					if (!mode_switch::restart())
+					{
+						player_profile::cancel_fresh_start();
+						console::error("Fresh Start cancelled: could not restart the client.\n");
+						return;
+					}
+				}
+				catch (const std::exception& e)
+				{
+					console::error("Fresh Start failed: %s\n", e.what());
+					MessageBoxA(nullptr, e.what(), "Fresh Start Failed", MB_OK | MB_ICONERROR);
+					return;
+				}
+				console::info("Fresh Start: restarting to reset profile '%s'.\n", player_profile::name().c_str());
+				game::Com_Quit_f();
+			}, scheduler::pipeline::main);
+		}
 
 		struct alignas(16) ddl_state
 		{
@@ -756,6 +795,19 @@ namespace stats
 			command::add("unlockstatsmp", unlock_multiplayer_stats);
 			command::add("unlockstatszm", unlock_zombie_stats);
 			command::add("unlockzmeastereggs", unlock_zombie_quests);
+			command::add("freshstart", fresh_start);
+			if (player_profile::fresh_start_completed())
+			{
+				scheduler::once([]
+				{
+					for (const auto* name : {"cg_unlockall_items", "cg_unlockall_loot", "cg_unlimited_zm_consumables"})
+					{
+						game::Dvar_SetBoolByName(name, false);
+					}
+					game::Dvar_SetFloatByName("cg_lootRarityScale", 1.0f);
+					console::info("Fresh Start complete: account overrides restored to defaults.\n");
+				}, scheduler::pipeline::main);
+			}
 		}
 	};
 }

@@ -2,6 +2,7 @@
 #include "loader/component_loader.hpp"
 
 #include "scheduler.hpp"
+#include "console/console.hpp"
 #include "game/game.hpp"
 
 #include <utils/hook.hpp>
@@ -298,6 +299,20 @@ namespace fps
 			
 			if (game::environment::uses_multiplayer_binary())
 			{
+				if (game::environment::is_zombies())
+				{
+					// SCR_UpdateScreen (0xF25A0) adds a 16 ms gate on top of Com_Frame's
+					// com_maxfps wait. At 95/120 FPS this skips alternate menu frames.
+					// Remove only that gate; retain the 33 ms gate for connection states 8/9.
+					constexpr unsigned char instruction[] = {0xB9, 0x10, 0x00, 0x00, 0x00};
+					if (std::memcmp(reinterpret_cast<const void*>(0xF25C8_g), instruction, sizeof(instruction)))
+					{
+						throw std::runtime_error("Unexpected Zombies menu frame limiter instruction.");
+					}
+					utils::hook::set<int>(0xF25C9_g, 0);
+					console::info("[FPS] Zombies menu now uses com_maxfps and the selected V-Sync setting.\n");
+				}
+
 				cg_draw_ping = game::Dvar_RegisterBool("cg_drawPing", false, game::DVAR_FLAG_SAVED);
 
 				// Dvar_Command calls in MP Playlist_RunRules (0x6563D0).

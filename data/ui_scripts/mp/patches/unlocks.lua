@@ -413,6 +413,18 @@ local function build_unlocks_menu( menu_name, properties, options_factory )
 	local scoped_data = LUI.FlowManager.GetScopedData( self )
 	scoped_data.gridData = options_factory( controller, self )
 	table.insert( scoped_data.gridData, rarity_option() )
+	table.insert( scoped_data.gridData, {
+		buttonType = "GenericButton",
+		buttonText = "FRESH START",
+		buttonDesc = "Reset this profile's Multiplayer and Zombies account, including all progression, " ..
+			"inventory, currency, loadouts, challenges, quest records, emblems and paintjobs. The game will restart.",
+		buttonActionFunc = function ( element )
+			open_unlock_confirmation( element, controller, "freshstart",
+				"Permanently erase ALL account data for the selected profile in Multiplayer and Zombies? " ..
+				"This cannot be undone. Unlock overrides will be disabled and the game will restart. " ..
+				"Your controls, graphics settings and other profiles will be kept." )
+		end
+	} )
 
 	local background = LUI.MenuBuilder.BuildRegisteredType( "GenericMenuBackground", {
 		controllerIndex = controller,
@@ -441,7 +453,7 @@ local function build_unlocks_menu( menu_name, properties, options_factory )
 	local options = LUI.MenuBuilder.BuildRegisteredType( "OptionButtonsGrid", {
 		controllerIndex = controller,
 		fontIconSet = properties.fontIconSet,
-		OptionsGrid_maxVisibleRows = 7,
+		OptionsGrid_maxVisibleRows = #scoped_data.gridData,
 		OptionsGrid_verticalAlignment = LUI.Alignment.Top
 	} )
 	options.id = "S2xUnlocksOptions"
@@ -451,6 +463,7 @@ local function build_unlocks_menu( menu_name, properties, options_factory )
 	options:setRight( _1080p * 900, 0 )
 	options:setTop( _1080p * 200, 0 )
 	self:addElement( options )
+	print( "[wwz-mod] ACCOUNT menu showing all " .. #scoped_data.gridData .. " options, including FRESH START" )
 
 	local title = LUI.MenuBuilder.BuildRegisteredType( "GenericMenuTitle", {
 		controllerIndex = controller,
@@ -465,7 +478,7 @@ local function build_unlocks_menu( menu_name, properties, options_factory )
 	if title.Title then
 		title.Title:setFont( FONTS.BodyBoldFont.Font )
 		title.Title:setHorizontalAlignment( LUI.HorizontalAlignment.Left )
-		title.Title:setText( Engine.Localize( "UNLOCKS" ), 0 )
+		title.Title:setText( Engine.Localize( "ACCOUNT" ), 0 )
 	end
 	if title.zm_title_divider0 then
 		title.zm_title_divider0:setRight( _1080p * 1727, 0 )
@@ -496,7 +509,7 @@ local function build_unlocks_menu( menu_name, properties, options_factory )
 	helper:Finish()
 
 	if title.SetTitle then
-		title:SetTitle( "UNLOCKS", "LUA_MENU_SOLDIER" )
+		title:SetTitle( "ACCOUNT", "LUA_MENU_SOLDIER" )
 	end
 
 	return self
@@ -548,8 +561,13 @@ local function patch_soldier_menu( soldier_menu, properties, requested_menu_name
 		unlocks_tab.Icon:setImage( RegisterMaterial( "menu_soldier_dossier" ), 0 )
 	end
 	if unlocks_tab.Name then
-		unlocks_tab.Name:setText( Engine.Localize( "UNLOCKS" ), 0 )
+		unlocks_tab.Name:setText( Engine.Localize( "ACCOUNT" ), 0 )
 	end
+	-- This template displays NEW by default, even without a breadcrumb source.
+	unlocks_tab.BreadCrumbText:setText( "", 0 )
+	unlocks_tab.BreadCrumbText:setAlpha( 0, 0 )
+	unlocks_tab.BreadCrumbIcon:setAlpha( 0, 0 )
+	print( "[wwz-mod] ACCOUNT tab added without NEW; Fresh Start available" )
 	soldier_menu:addElement( unlocks_tab )
 	soldier_menu.S2xUnlocksTab = unlocks_tab
 

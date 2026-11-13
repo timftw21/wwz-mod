@@ -1,7 +1,7 @@
 #include <std_include.hpp>
 #include "loader/component_loader.hpp"
 #include "game/game.hpp"
-#include "version.hpp"
+#include "console/console.hpp"
 
 #include "scheduler.hpp"
 
@@ -20,7 +20,7 @@ namespace branding
 			const auto* font = game::R_RegisterFont("fonts/fira_mono_regular.ttf", 16);
 			if (!font) return;
 
-			game::R_AddCmdDrawText("S2x: " VERSION, 0x7fffffff, font, 0, 0, font->pixelHeight, x, y, 1.0f, 1.0f, 0.0f, color, nullptr);
+			game::R_AddCmdDrawText("WWZ-MOD 0.1", 0x7fffffff, font, 0, 0, font->pixelHeight, x, y, 1.0f, 1.0f, 0.0f, color, nullptr);
 		}
 
 		int multi_byte_to_wide_char_stub(UINT CodePage, DWORD dwFlags, LPCCH lpMultiByteStr, int cbMultiByte, LPWSTR lpWideCharStr, int cchWideChar)
@@ -34,6 +34,7 @@ namespace branding
 		void post_unpack() override
 		{
 			scheduler::loop(draw_branding, scheduler::renderer);
+			console::debug("[Branding] Overlay set to WWZ-MOD 0.1.\n");
 
 			// Change window title prefix
 			if (game::environment::uses_multiplayer_binary())

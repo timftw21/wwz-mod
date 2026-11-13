@@ -5,6 +5,39 @@ end
 local builders = LUI.MenuBuilder.m_types_build
 local build_hud = builders.ZMHud
 
+local function random_blitz_prompt( prompt )
+	local random_id = tonumber( Engine.TableLookup( "mp/zombieInteractTable.csv", 2, "perk_random", 1 ) )
+	if not random_id then
+		print( "[wwz-mod] Could not find the Random Blitz interaction ID" )
+		return
+	end
+	local function resetting()
+		local flags = Game.GetOmnvar( "ui_zm_interaction_flags" ) or 0
+		local data = Game.GetOmnvar( "ui_zm_interaction_data" ) or 0
+		return Engine.BitwiseAnd( flags, 15 ) == 2
+			and Engine.BitwiseAnd( math.floor( flags / 16 ), 4095 ) == random_id
+			and Engine.BitwiseAnd( data, 65536 ) ~= 0
+	end
+
+	for _, label in ipairs( { prompt.InteractText, prompt.CostText } ) do
+		local set_text = label.setText
+		local cooldown_text = label == prompt.InteractText and "Machine resetting..." or ""
+		label.setText = function ( self, text, ... )
+			return set_text( self, resetting() and cooldown_text or text, ... )
+		end
+		-- Also cover a HUD rebuilt while this player's machine is resetting.
+		label:setText( label:getText() or "" )
+	end
+	for _, hint in ipairs( { prompt.Consumable0Hint, prompt.Consumable1Hint } ) do
+		local set_alpha = hint.setAlpha
+		hint.setAlpha = function ( self, alpha, ... )
+			return set_alpha( self, resetting() and 0 or alpha, ... )
+		end
+		hint:setAlpha( hint:getAlpha() )
+	end
+	print( "[wwz-mod] Random Blitz cooldown replaces the scripted purchase prompt" )
+end
+
 local function center_text( text )
 	local left, _, right = text:getLocalRect()
 	local half_width = left and right and right > left and (right - left) / 2 or 300 * _1080p
@@ -137,6 +170,7 @@ builders.ZMHud = function ( menu, properties )
 	prompt:setRight( 300 * _1080p, 0 )
 	local controller = properties and properties.controllerIndex or hud:getRootController()
 	center_interaction( prompt, controller, properties and properties.fontIconSet or LUI.FontIconSet.Default )
+	random_blitz_prompt( prompt )
 	return hud
 end
 

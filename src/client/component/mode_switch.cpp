@@ -140,6 +140,11 @@ namespace mode_switch
 		}
 	}
 
+	bool restart()
+	{
+		return launch_game("s2_mp64_ship.exe", game::environment::is_zombies() ? "+zombiesMode 1" : "");
+	}
+
 	void wait_for_previous_process()
 	{
 		if (!utils::flags::has_flag("-wait-for-parent"))

@@ -4,6 +4,31 @@ end
 
 local builders = LUI.MenuBuilder.m_types_build
 
+local build_hints = builders.zm_HintsWidget
+if build_hints then
+	builders.zm_HintsWidget = function ( menu, properties )
+		local hints = build_hints( menu, properties )
+		-- Stock creates CGInvalidCmdHint first, followed by the scope zoom hint.
+		local invalid_command = hints:getFirstChild()
+		if invalid_command then
+			-- The native renderer centers text on the ownerdraw rectangle's alignment
+			-- point. Center both that rectangle and its horizontal alignment explicitly.
+			local left, _, right = invalid_command:getLocalRect()
+			local half_width = (right - left) / 2
+			invalid_command:setAnchors( 0.5, 0.5, 0, 1, 0 )
+			invalid_command:setLeft( -half_width, 0 )
+			invalid_command:setRight( half_width, 0 )
+			invalid_command:setHorizontalAlignment( LUI.HorizontalAlignment.Center )
+			print( "[wwz-mod] Centered Zombies stance warnings, including Prone Blocked" )
+		else
+			print( "[wwz-mod] Could not find the Zombies stance warning ownerdraw" )
+		end
+		return hints
+	end
+else
+	print( "[wwz-mod] Could not find the Zombies hints builder" )
+end
+
 local function align_ability_prompt( prompt )
 	-- Both ammo warnings already use the screen midpoint. The ability prompt's stock bounds are 6 pixels left.
 	local left, _, right = prompt:getLocalRect()

@@ -4,6 +4,28 @@ end
 
 local builders = LUI.MenuBuilder.m_types_build
 
+-- Find Match starts PublicMatch/PublicMatchAlt; public and custom lobbies
+-- start ReadyUp/ShatteredLobby. Return the stock "no tutorial" result so
+-- callers give focus to the menu instead of waiting for a tutorial to finish.
+local match_tutorials = {
+	PublicMatch = true,
+	PublicMatchAlt = true,
+	ReadyUp = true,
+	ShatteredLobby = true
+}
+local attempt_tutorial = ZombiesOnboarding and ZombiesOnboarding.AttemptFirstTouchPopup
+if type( attempt_tutorial ) == "function" then
+	ZombiesOnboarding.AttemptFirstTouchPopup = function ( controller, tutorial )
+		if match_tutorials[tutorial] then
+			return false
+		end
+		return attempt_tutorial( controller, tutorial )
+	end
+	print( "[wwz-mod] Disabled Zombies public/custom match selection and lobby tutorials" )
+else
+	print( "[wwz-mod] Could not disable match tutorials: Zombies onboarding function missing" )
+end
+
 local build_soldier = builders.zm_soldier_menu
 if build_soldier then
 	builders.zm_soldier_menu = function ( menu, properties )

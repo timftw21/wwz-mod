@@ -1,6 +1,7 @@
 #include <std_include.hpp>
 #include "player_profile.hpp"
 #include "game.hpp"
+#include "component/console/console.hpp"
 
 #include <utils/flags.hpp>
 #include <utils/io.hpp>
@@ -72,6 +73,7 @@ namespace player_profile
 			std::string name{load_selection()};
 			std::filesystem::path directory{directory_for(name)};
 			utils::nt::handle<> reservation;
+			bool fresh_start{};
 		};
 
 		profile& selected()
@@ -127,8 +129,54 @@ namespace player_profile
 				+ "' is already in use. Choose another profile in the launcher or use -profile <name>.");
 		}
 
-		std::filesystem::create_directories(value.directory);
+		const auto pending = value.directory.parent_path() / "fresh-start.pending";
+		if (std::filesystem::exists(pending))
+		{
+			try
+			{
+				// Reserve the profile before removing anything, and reset before any store
+				// is loaded. Shutdown writes from the previous process have finished.
+				const auto directory = std::filesystem::absolute(value.directory).lexically_normal();
+				if (std::filesystem::weakly_canonical(directory) != directory)
+				{
+					throw std::runtime_error("Fresh Start cannot reset a redirected profile directory.");
+				}
+				console::info("[Profile] Fresh Start: resetting '%s'.\n", value.name.c_str());
+				std::filesystem::remove_all(directory);
+				std::filesystem::create_directories(directory);
+				std::filesystem::remove(pending);
+				value.fresh_start = true;
+				console::info("[Profile] Fresh Start: all saved account data cleared.\n");
+			}
+			catch (const std::exception& e)
+			{
+				console::error("[Profile] Fresh Start failed for '%s': %s\n", value.name.c_str(), e.what());
+				throw;
+			}
+		}
+		else
+		{
+			std::filesystem::create_directories(value.directory);
+		}
 		value.reservation = std::move(reservation);
+	}
+
+	void request_fresh_start()
+	{
+		reserve();
+		// An atomic directory marker survives interrupted shutdown or reset. A failed
+		// reset leaves it in place and blocks loading a partially cleared account.
+		std::filesystem::create_directory(selected().directory.parent_path() / "fresh-start.pending");
+	}
+
+	void cancel_fresh_start()
+	{
+		std::filesystem::remove(selected().directory.parent_path() / "fresh-start.pending");
+	}
+
+	bool fresh_start_completed()
+	{
+		return selected().fresh_start;
 	}
 
 	std::vector<std::string> list()
