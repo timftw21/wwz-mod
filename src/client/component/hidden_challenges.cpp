@@ -8,6 +8,7 @@
 #include "component/scheduler.hpp"
 
 #include "game/game.hpp"
+#include "component/gsc/script_extension.hpp"
 #include "game/string_table.hpp"
 #include "game/demonware/achievement/store.hpp"
 #include "game/demonware/reward/game_event.hpp"
@@ -100,6 +101,8 @@ namespace hidden_challenges
 		// one mask per known group, including events waiting for assets or a save retry.
 		using completion_masks = std::array<std::uint16_t, hidden_groups.size()>;
 		completion_masks pending_events{};
+		// Guards the definitions and saves; script queries run outside the main pipeline.
+		std::mutex definitions_mutex{};
 		std::unordered_map<int, hidden_challenge_definition> definitions{};
 		std::size_t last_reported_definition_count{std::numeric_limits<std::size_t>::max()};
 		std::chrono::steady_clock::time_point next_definition_load{};
@@ -366,6 +369,8 @@ namespace hidden_challenges
 
 		void process_pending_events()
 		{
+			// Held through the save, so a script query never sees a completion in neither place.
+			std::lock_guard definitions_lock{definitions_mutex};
 			load_definitions();
 			const auto now = std::chrono::steady_clock::now();
 			if (now < next_event_retry)
@@ -468,6 +473,37 @@ namespace hidden_challenges
 		pending_events[index] |= static_cast<std::uint16_t>(1u << challenge);
 	}
 
+	std::optional<std::uint16_t> get_owned_challenges(const std::uint32_t group)
+	{
+		const auto index = get_group_index(group);
+		if (index == hidden_groups.size() || !demonware::achievement_store::is_available())
+		{
+			return {};
+		}
+
+		std::lock_guard definitions_lock{definitions_mutex};
+		load_definitions();
+		const auto definition = definitions.find(hidden_groups[index].value);
+		if (definition == definitions.end())
+		{
+			return {};
+		}
+
+		std::uint16_t owned{};
+		for (const auto& record : demonware::achievement_store::get_all())
+		{
+			if (record.name == definition->second.achievement_name)
+			{
+				owned = record.progress;
+				break;
+			}
+		}
+
+		std::lock_guard pending_lock{pending_event_mutex};
+		owned |= pending_events[index];
+		return static_cast<std::uint16_t>(owned & definition->second.full_mask);
+	}
+
 	void submit_reward_game_event(reward_game_event event)
 	{
 		std::uint32_t group{};
@@ -490,6 +526,13 @@ namespace hidden_challenges
 
 			accepting_events = true;
 			scheduler::loop(process_pending_events, scheduler::pipeline::main, 50ms);
+
+			// wwz_treasure_parts.gsc: the pieces of a group the local profile owns, or -1 if unknown.
+			gsc::add_function("wwz_treasure_pieces_owned", []
+			{
+				const auto owned = get_owned_challenges(static_cast<std::uint32_t>(game::Scr_GetInt(0)));
+				game::Scr_AddInt(owned ? *owned : -1);
+			});
 		}
 
 		void pre_destroy() override

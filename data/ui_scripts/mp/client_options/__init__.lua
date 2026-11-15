@@ -4,7 +4,7 @@ end
 
 local builders = LUI.MenuBuilder.m_types_build
 local preload = PCOptionsUtils.PreLoad
-local title = "Client Options"
+local title = "WWZ-MOD Options"
 local menu_name = "wwz_client_options"
 local locations = "wwz_zm_map_locations"
 local jumpscares = "wwz_zm_jumpscares"
@@ -32,7 +32,7 @@ PCOptionsUtils.PreLoad = function ( menu, properties )
 		local rows = {}
 		add_toggle( rows, "Map Locations", "Show the current area name on the Zombies HUD.", locations )
 		add_toggle( rows, "Jumpscare Zombies", "Allow optional environmental jumpscares when you host Zombies.", jumpscares )
-		add_toggle( rows, "HUD Text Stream", "Show purchase and other activity messages on the Zombies HUD.", feed )
+		add_toggle( rows, "HUD Activity Stream", "Show purchase and other activity messages on the Zombies HUD.", feed )
 		add_toggle( rows, "Objective Text", "Show objective hints and the key prompt on the Zombies HUD.", objectives )
 		scoped.gridData = rows
 	else
@@ -49,11 +49,29 @@ LUI.MenuBuilder.registerType( menu_name, function ( menu, properties )
 	options.noBack = false
 	options.defaultBackButtonHandler = function ( element, controller )
 		ACTIONS.LeaveMenu( element, nil, controller )
-		print( "[wwz-mod] Closed Client Options" )
+		print( "[wwz-mod] Closed WWZ-MOD Options" )
 	end
 	local page = builders.pc_options( menu, options )
 	page.id = menu_name
 	page.Title:SetTitle( title, "MENU_SETTINGS" )
+	-- The Settings hub skips its blurred backdrop in game, where the pause menu sits behind it.
+	-- Audio, Graphics and the other settings pages always build one, so match them.
+	local first = page:getFirstChild()
+	if not page.GenericMenuBackground0 and first then
+		local background = LUI.MenuBuilder.BuildRegisteredType( "GenericMenuBackground", {
+			controllerIndex = options.controllerIndex,
+			fontIconSet = options.fontIconSet
+		} )
+		background.id = "GenericMenuBackground0"
+		background:setAnchors( 0, 0, 0, 0, 0 )
+		background:setLeft( 0, 0 )
+		background:setRight( 0, 0 )
+		background:setTop( 0, 0 )
+		background:setBottom( 0, 0 )
+		background:addElementBefore( first )
+		page.GenericMenuBackground0 = background
+		print( "[wwz-mod] Added the settings backdrop blur to WWZ-MOD Options" )
+	end
 	return page
 end )
 
@@ -94,4 +112,4 @@ if Engine.IsZombiesMode() and not Engine.InFrontend() then
 	end
 end
 
-print( "[wwz-mod] Client Options registered" )
+print( "[wwz-mod] WWZ-MOD Options registered" )
