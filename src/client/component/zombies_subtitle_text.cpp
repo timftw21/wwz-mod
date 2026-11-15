@@ -73,11 +73,6 @@ namespace zombies_subtitle_text
 		}
 
 		const std::string_view name{entry->name};
-		if (!name.starts_with("SUBTITLE_") && !name.starts_with("ZM_VIDSUBTITLES_"))
-		{
-			return entry;
-		}
-
 		const auto end = std::end(corrections);
 		const auto found = std::lower_bound(std::begin(corrections), end, name,
 			[](const correction& item, const std::string_view key) { return item.entry.name < key; });
@@ -85,6 +80,12 @@ namespace zombies_subtitle_text
 		if (found != end && found->entry.name == name && found->original == text_hash(entry->value))
 		{
 			entry = &found->entry;
+			// Menu text shares this table; log its first use to confirm the menu lookup path.
+			static std::atomic_bool logged_menu{false};
+			if (!name.starts_with("SUBTITLE_") && !name.starts_with("ZM_VIDSUBTITLES_") && !logged_menu.exchange(true))
+			{
+				console::debug("Applied the audited Zombies menu text.\n");
+			}
 		}
 		return color_straub(entry, name);
 	}

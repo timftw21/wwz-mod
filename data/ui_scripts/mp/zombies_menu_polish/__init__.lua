@@ -102,10 +102,12 @@ local function text_height( label, icon_set )
 end
 
 local build_maps = builders.zm_select_map
+local trimmed_descriptions = {}
 if build_maps then
 	builders.zm_select_map = function ( menu, properties )
 		local maps = build_maps( menu, properties )
 		local label, description = maps.UnlockMessage, maps.Description
+		local icon_set = properties and properties.fontIconSet or LUI.FontIconSet.Frontend
 		local left, top, right, bottom = label:getLocalRect()
 		local survival_message = Engine.Localize( "ZOMBIES_MENU_SURVIVAL_MAP_UNLOCKED" )
 		local survival = false
@@ -119,8 +121,9 @@ if build_maps then
 			skull:setAlpha( survival and 1 or 0, 0 )
 			if survival then
 				local x, y = description:getLocalRect()
-				local _, wrapped_height = description:getElementTextDims( false, true, true )
-				y = y + (wrapped_height + 4) * _1080p
+				-- Measure the new text directly; the element's own text dimensions lag behind
+				-- setText and still describe the previously focused map.
+				y = y + text_height( description, icon_set ) + 4 * _1080p
 				-- The skull material has transparent margins around its artwork.
 				skull:setAnchorsAndPosition( 0, 1, 0, 1, x - 12 * _1080p, x + 36 * _1080p,
 					y - 8 * _1080p, y + 40 * _1080p, 0 )
@@ -141,10 +144,19 @@ if build_maps then
 		local set_description = description.setText
 		description.setText = function ( self, text, ... )
 			-- Altar of Blood's localized description ends in blank lines that inflate its height.
+			-- They are not Lua whitespace (the trim never matched), so also strip the literal
+			-- "\n" escapes the text renderer expands.
 			if type( text ) == "string" then
-				local trimmed = text:gsub( "%s+$", "" )
+				local trimmed = text
+				repeat
+					local previous = trimmed
+					trimmed = trimmed:gsub( "%s+$", "" ):gsub( "\\[nrt]$", "" ):gsub( "\194\160$", "" )
+				until trimmed == previous
 				if trimmed ~= text then
-					print( "[wwz-mod] Trimmed trailing whitespace from the Zombies map description" )
+					if not trimmed_descriptions[trimmed] then
+						trimmed_descriptions[trimmed] = true
+						print( "[wwz-mod] Trimmed trailing blank lines from the Zombies map description" )
+					end
 					text = trimmed
 				end
 			end
@@ -283,4 +295,267 @@ if build_video then
 	end
 else
 	print( "[wwz-mod] Could not find the Recordings video builder" )
+end
+
+local build_consumable_preview = builders.zm_consumables_menu_preview
+if build_consumable_preview then
+	builders.zm_consumables_menu_preview = function ( menu, properties )
+		local preview = build_consumable_preview( menu, properties )
+		local charges = preview.Charges
+		if not charges then
+			print( "[wwz-mod] Could not find the Consumables charge label" )
+			return preview
+		end
+		local set_text = charges.setText
+		charges.setText = function ( element, text, ... )
+			-- The stock picker pairs every charge count with the singular label.
+			local count, label
+			if type( text ) == "string" then
+				count, label = text:match( "^(%d+) (.+)$" )
+			end
+			if count and count ~= "1" and label == Engine.Localize( "ZOMBIES_CONSUMABLE_CHARGE" ) then
+				text = count .. " " .. Engine.Localize( "ZOMBIES_CONSUMABLE_CHARGE_PLURAL" )
+				if not preview.wwzLoggedCharges then
+					preview.wwzLoggedCharges = true
+					print( "[wwz-mod] Pluralized the Consumables charge count" )
+				end
+			end
+			return set_text( element, text, ... )
+		end
+		return preview
+	end
+else
+	print( "[wwz-mod] Could not find the Consumables preview builder" )
+end
+
+-- The Self-Revive panel's slide sequences use slightly different sizes and heights in each
+-- direction, so its multi-line description rewrapped and jumped. Slide it at its resting size.
+local build_consumables = builders.zm_consumables_menu
+if build_consumables then
+	local self_revive_rects = {
+		SelfReviveIconBackground = { 187, 315, 553, 683 },
+		SelfReviveIcon = { 187, 315, 553, 683 },
+		SelfReviveName = { 327, 677, 533, 581.5 },
+		SelfReviveDesc = { 327, 832.03, 581, 611 }
+	}
+	local slide = 705
+	builders.zm_consumables_menu = function ( menu, properties )
+		local consumables = build_consumables( menu, properties )
+		local fixed = 0
+		for name, rect in pairs( self_revive_rects ) do
+			local element = consumables[name]
+			if element and element.RegisterAnimationSequence then
+				local left, right, top, bottom = rect[1] * _1080p, rect[2] * _1080p, rect[3] * _1080p, rect[4] * _1080p
+				local offset = slide * _1080p
+				local function place( shift, duration, easing )
+					-- Match the stock calls exactly: the native setter rejects an explicit nil easing.
+					if easing then
+						return element:setAnchorsAndPosition( 0, 1, 0, 1, left + shift, right + shift, top, bottom, duration, easing )
+					end
+					return element:setAnchorsAndPosition( 0, 1, 0, 1, left + shift, right + shift, top, bottom, duration )
+				end
+				element:RegisterAnimationSequence( "SlideLeft", {
+					{ function () return element:setAlpha( 0, 281 ) end },
+					{
+						function () return place( 0, 0 ) end,
+						function () return place( -offset, 281, LUI.EASING.outSine ) end
+					}
+				} )
+				element:RegisterAnimationSequence( "SlideRight", {
+					{ function () return element:setAlpha( 1, 0 ) end },
+					{
+						function () return place( -offset, 0 ) end,
+						function () return place( 0, 281, LUI.EASING.outSine ) end
+					}
+				} )
+				fixed = fixed + 1
+			end
+		end
+		print( "[wwz-mod] Kept " .. fixed .. " Self-Revive panel elements at their resting size while sliding" )
+		return consumables
+	end
+else
+	print( "[wwz-mod] Could not find the Consumables menu builder" )
+end
+
+-- The Tortured Path vignette is only added when a lobby background variant is built,
+-- so selecting the mode kept the previous background until another tab rebuilt it.
+local set_background = PersistentBackground and PersistentBackground.Set
+local lobby_backgrounds = {}
+for _, name in ipairs( { "HubLobby", "ZombieVendor", "ZombiesVLobby" } ) do
+	local variant = set_background and PersistentBackground.Variants[name]
+	if variant then
+		lobby_backgrounds[variant] = true
+	end
+end
+if set_background and next( lobby_backgrounds ) then
+	local built_shattered
+
+	local function shattered()
+		return CONDITIONS.IsZombiesShatteredModeLobby() == true
+	end
+
+	local function stale( variant )
+		return lobby_backgrounds[variant] and built_shattered ~= shattered()
+	end
+
+	local function refresh_background()
+		local variant = PersistentBackground.current
+		if variant and stale( variant ) then
+			PersistentBackground.Set( variant, true )
+			print( "[wwz-mod] Rebuilt the lobby background after the Zombies mode changed" )
+		end
+	end
+
+	local function watch_mode()
+		local container = Engine.GetLuiRoot().persistentBackground
+		local lobby = DataSources.inFrontend.MP.lobby
+		if not container or container.wwzModeWatcher or not lobby then
+			return
+		end
+		local watcher = LUI.UIElement.new()
+		watcher.id = "wwzModeWatcher"
+		container:addElement( watcher )
+		container.wwzModeWatcher = watcher
+		watcher:registerEventHandler( "wwz_refresh_lobby_background", refresh_background )
+		local controller = Engine.GetFirstActiveController()
+		for _, source in ipairs( { lobby.mapRef, lobby.gameTypeRef } ) do
+			watcher:SubscribeToModel( source:GetModel( controller ), function ()
+				refresh_background()
+				-- Check once more after the party settles the new map and game type.
+				watcher:addElement( LUI.UITimer.new( 250, "wwz_refresh_lobby_background", nil, true ) )
+			end )
+		end
+		print( "[wwz-mod] Watching the lobby map and mode for the Tortured Path background" )
+	end
+
+	PersistentBackground.Set = function ( variant, force, ... )
+		if variant and variant == PersistentBackground.current and not force and stale( variant ) then
+			force = true
+			print( "[wwz-mod] Rebuilt the lobby background for the current Zombies mode" )
+		end
+		local rebuilt = variant ~= PersistentBackground.current or force
+		local result = set_background( variant, force, ... )
+		if rebuilt then
+			built_shattered = shattered()
+		end
+		watch_mode()
+		return result
+	end
+else
+	print( "[wwz-mod] Could not hook the Zombies lobby background" )
+end
+
+-- Menus add Supply Drops ahead of their Back or Leave Match prompt on the right side of
+-- the prompt bar; place it on the other side, as in the lobby.
+local bar_builder = LUI.ButtonHelperBarBuilder
+local finish_bar = bar_builder and bar_builder.Finish
+if finish_bar then
+	local supply_text = Engine.Localize( "LUA_MENU_SUPPLY_DROP_PLURAL" )
+	local swapped = false
+	bar_builder.Finish = function ( self, ... )
+		local back, supply
+		for _, entry in ipairs( self._buttons or {} ) do
+			if entry.screenLocation == ButtonBarScreenLocations.Right then
+				if entry.button == LuaButton.secondary then
+					back = entry
+				elseif entry.button == LuaButton.right_trigger and entry.text == supply_text then
+					supply = entry
+				end
+			end
+		end
+		if back and supply and supply.priority <= back.priority then
+			supply.priority = back.priority + 1
+			if not swapped then
+				swapped = true
+				print( "[wwz-mod] Placed Supply Drops after the Back and Leave Match prompts" )
+			end
+		end
+		return finish_bar( self, ... )
+	end
+else
+	print( "[wwz-mod] Could not find the prompt bar builder" )
+end
+
+-- Scrolling tab bars show fewer tabs than they hold. Clip the hidden ones while they
+-- slide, and keep the bar as wide as its widest run of visible tabs: the stock resize
+-- fits the bar to the tabs currently shown, which moves the right bumper prompt.
+local function tab_width( text, icon_set )
+	-- Mirrors masterNavigationBarItem, which sizes every tab in its focused style.
+	local left, _, right = GetTextDimensions( MODIFIERS.ToUpperCase( text ), FONTS.BodyBoldFont.Font,
+		icon_set, Engine.AdjustFontSizeByLanguage( 21 ), nil, 1.4 )
+	return math.max( (right - left) * _1080p + 12, TopNavBarUtils.ItemMinimumWidth )
+end
+
+local function widest_tab_run( bar, visible, spacing, icon_set )
+	local source, controller = bar.BarElements:GetGridDataSource()
+	local count = source and source.GetCountValue and tonumber( source:GetCountValue( controller ) ) or 0
+	if count <= visible then
+		return nil
+	end
+	local widths = {}
+	for index = 0, count - 1 do
+		local item = source:GetDataSourceAtIndex( index, controller )
+		if item.isIcon and item.isIcon:GetValue( controller ) then
+			widths[index + 1] = TopNavBarUtils.ItemIconStateDefaultWidth
+		else
+			local name = item.name and item.name:GetValue( controller )
+			if type( name ) ~= "string" then
+				return nil
+			end
+			widths[index + 1] = tab_width( name, icon_set )
+		end
+	end
+	local widest = 0
+	for first = 1, count - visible + 1 do
+		local run = 0
+		for index = first, first + visible - 1 do
+			run = run + widths[index]
+		end
+		widest = math.max( widest, run )
+	end
+	local bumpers = math.abs( GLOBAL_CONSTANTS.MasterNavigationBarBumperSizeLeft ) +
+		math.abs( GLOBAL_CONSTANTS.MasterNavigationBarBumperSizeRight )
+	return widest + spacing * (visible - 1) + (TopNavBarUtils.Padding + bumpers) * _1080p
+end
+
+local build_navbar = builders.masterNavigationBar
+if build_navbar then
+	local clipped, pinned = false, false
+	builders.masterNavigationBar = function ( menu, properties )
+		local bar = build_navbar( menu, properties )
+		local visible = properties and properties.BarElements_maxVisibleColumns
+		if not visible or not bar.BarElements then
+			return bar
+		end
+		bar.BarElements:setUseStencil( true )
+		if not clipped then
+			clipped = true
+			print( "[wwz-mod] Clipped scrolling tab bars to their bounds" )
+		end
+
+		local spacing = properties.BarElements_spacingX or 32 * _1080p
+		local icon_set = properties.fontIconSet or LUI.FontIconSet.Frontend
+		local set_width = bar.setWidth
+		local widest = 0
+		bar.setWidth = function ( self, width, ... )
+			local ok, run = pcall( widest_tab_run, self, visible, spacing, icon_set )
+			if ok and run then
+				-- Never shrink, in case a run measures wider in game than estimated.
+				widest = math.max( widest, run, width )
+				width = widest
+				if not pinned then
+					pinned = true
+					print( "[wwz-mod] Pinned scrolling tab bars to their widest run of tabs" )
+				end
+			elseif not ok and not self.wwzMeasureFailed then
+				self.wwzMeasureFailed = true
+				print( "[wwz-mod] Could not measure a scrolling tab bar: " .. tostring( run ) )
+			end
+			return set_width( self, width, ... )
+		end
+		return bar
+	end
+else
+	print( "[wwz-mod] Could not find the tab bar builder" )
 end

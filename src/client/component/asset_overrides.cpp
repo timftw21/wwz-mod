@@ -132,6 +132,8 @@ namespace asset_overrides
 
 			static game::LocalizeEntry ammo{"Scavenged Ammo", "ZOMBIES_NOTIFICATION_MESSAGE_HEAVY_MELEE_AMMO"};
 			static game::LocalizeEntry lethal{"Scavenged Lethal Equipment", "ZOMBIES_NOTIFICATION_MESSAGE_HEAVY_MELEE_LETHAL"};
+			static game::LocalizeEntry points{"Scavenged Bonus Jolts", "ZOMBIES_NOTIFICATION_MESSAGE_HEAVY_MELEE_POINTS"};
+			static game::LocalizeEntry nothing{"Scavenged Nothing", "ZOMBIES_NOTIFICATION_MESSAGE_HEAVY_MELEE_NOTHING"};
 			const std::string_view name{entry->name};
 			const std::string_view value{entry->value};
 			if (name == ammo.name && value == "Scavenged some ammo.")
@@ -141,6 +143,14 @@ namespace asset_overrides
 			if (name == lethal.name && value == "Scavenged some lethal equipment.")
 			{
 				return &lethal;
+			}
+			if (name == points.name && value == "Scavenged bonus Jolts.")
+			{
+				return &points;
+			}
+			if (name == nothing.name && value == "Scavenged nothing.")
+			{
+				return &nothing;
 			}
 			return entry;
 		}
@@ -173,12 +183,17 @@ namespace asset_overrides
 			if (type == game::ASSET_TYPE_LOCALIZE && game::environment::uses_multiplayer_binary() &&
 				!game::environment::is_dedicated())
 			{
+				// Correct audited Zombies text first; its hashes match the stock value, and prompt
+				// formatting then applies to the corrected text.
+				if (game::environment::is_zombies())
+				{
+					header.localize = zombies_subtitle_text::format_entry(header.localize);
+				}
 				// Scripted hold hints resolve assets directly, alongside the regular text lookup.
 				header.localize = prompt_text::format_entry(header.localize);
 				if (game::environment::is_zombies())
 				{
 					header.localize = format_scavenging_notification(header.localize);
-					header.localize = zombies_subtitle_text::format_entry(header.localize);
 				}
 			}
 			return header;
@@ -194,7 +209,7 @@ namespace asset_overrides
 			console::debug("Installed asset-level interaction prompt formatting.\n");
 			if (game::environment::is_zombies() && !game::environment::is_dedicated())
 			{
-				console::debug("Installed English Zombies subtitle and scavenging text corrections.\n");
+				console::debug("Installed English Zombies subtitle, menu and scavenging text corrections.\n");
 			}
 		}
 	};
