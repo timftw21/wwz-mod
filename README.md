@@ -1,3 +1,16 @@
+# WWZ-MOD
+A zombies-focused fork of s2x-mod, featuring fixes, gameplay tweaks, and additions. 
+
+So, what's changed?
+- A slew of tweaks, polish, and fixes to menus and subtitles.
+- The Darkest Shore's boss fight has been made fairer for solo players.
+- Added "Downs" section to the scoreboard.
+- Power-ups don't spawn out of bounds anymore (still testing).
+- Certain easter egg interactibles on The Shadowed Throne now cause zombies to ignore the player. This is a quality-of-life feature for solo players.
+- Treasure zombies always drop missing treasure pieces.
+- Added toggleable HUD options and tweaks to Settings, including map locations, jumpscare zombies, HUD activity stream, and objective text.
+- Added a "Fresh Start" option to Account settings. 
+
 # S2x ⭐
 
 > [!WARNING]
