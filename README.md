@@ -8,7 +8,7 @@ So, what's changed?
 - Power-ups don't spawn out of bounds anymore (still testing).
 - Certain easter egg interactibles on The Shadowed Throne now cause zombies to ignore the player. This is a quality-of-life feature for solo players.
 - Treasure zombies always drop missing treasure pieces.
-- Added toggleable HUD options and tweaks to Settings, including map locations, jumpscare zombies, HUD activity stream, and objective text.
+- Added toggleable HUD options and tweaks to Settings, including map locations, jumpscare zombies, HUD activity stream, objective text, double XP, and HUD visibility.
 - Added a "Fresh Start" option to Account settings. 
 
 # S2x ⭐
