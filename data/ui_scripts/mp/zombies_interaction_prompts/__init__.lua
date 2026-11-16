@@ -158,6 +158,61 @@ local function center_interaction( prompt, controller, icon_set )
 	align_lines()
 end
 
+-- Scripted hint strings draw in one text block, so a cost line inside one (the Darkest Shore mine
+-- cart, Flak Cannon and turret) cannot sit where a wall buy's separate CostText does. Draw that line
+-- in a copy of CostText, following its position and size in every layout.
+local function split_hint_cost( prompt, icon_set )
+	local message, stock = prompt.InteractHintMessage, prompt.CostText
+	local cost = LUI.UIText.new()
+	cost.id = "wwz_hint_cost"
+	if icon_set ~= nil then
+		cost:setFontIconSet( icon_set )
+	end
+	cost:setFont( FONTS.BodyFont.Font )
+	cost:setFontSize( 24, 0 )
+	cost:setRGBFromInt( SWATCHES.ZM.hudText, 0 )
+	cost:setHorizontalAlignment( LUI.HorizontalAlignment.Center )
+	cost:setVerticalAlignment( LUI.VerticalAlignment.Bottom )
+	cost:setAlpha( 0, 0 )
+	prompt:addElement( cost )
+
+	local line, logged = nil, false
+	local function refresh()
+		cost:setAlpha( line and message:getAlpha() or 0, 0 )
+	end
+	local set_text = message.setText
+	message.setText = function ( self, text, ... )
+		local action, cost_line = nil, nil
+		if type( text ) == "string" then
+			action, cost_line = text:match( "^(.-)\n+(Cost: [^\n]*)\n*$" )
+		end
+		line = cost_line
+		if line then
+			local left, top, right, bottom = stock:getLocalRect()
+			if left then
+				cost:setAnchorsAndPosition( 0.5, 0.5, 1, 0, left, right, top, bottom, 0 )
+			end
+			local size = stock:getFontSize()
+			if size then
+				cost:setFontSize( size, 0 )
+			end
+			cost:setText( line )
+			if not logged then
+				logged = true
+				print( "[wwz-mod] Drew a scripted hint's cost line in the wall-buy cost position" )
+			end
+		end
+		refresh()
+		return set_text( self, action or text, ... )
+	end
+	local set_alpha = message.setAlpha
+	message.setAlpha = function ( self, ... )
+		local result = set_alpha( self, ... )
+		refresh()
+		return result
+	end
+end
+
 builders.ZMHud = function ( menu, properties )
 	local hud = build_hud( menu, properties )
 	local prompt = hud.InteractPrompt
@@ -169,7 +224,9 @@ builders.ZMHud = function ( menu, properties )
 	prompt:setLeft( -300 * _1080p, 0 )
 	prompt:setRight( 300 * _1080p, 0 )
 	local controller = properties and properties.controllerIndex or hud:getRootController()
-	center_interaction( prompt, controller, properties and properties.fontIconSet or LUI.FontIconSet.Default )
+	local icon_set = properties and properties.fontIconSet or LUI.FontIconSet.Default
+	center_interaction( prompt, controller, icon_set )
+	split_hint_cost( prompt, icon_set )
 	random_blitz_prompt( prompt )
 	return hud
 end

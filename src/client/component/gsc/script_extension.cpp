@@ -485,6 +485,9 @@ namespace gsc
 				game::Dvar_RegisterBool("wwz_zm_map_locations", true, game::DVAR_FLAG_SAVED);
 				game::Dvar_RegisterBool("wwz_zm_notification_feed", true, game::DVAR_FLAG_SAVED);
 				game::Dvar_RegisterBool("wwz_zm_objective_text", true, game::DVAR_FLAG_SAVED);
+				game::Dvar_RegisterBool("wwz_zm_hud", true, game::DVAR_FLAG_SAVED);
+				// The bundled playlist enables Zombies 2XP; wwz_double_xp.gsc applies this choice on the host.
+				game::Dvar_RegisterBool("wwz_zm_double_xp", true, game::DVAR_FLAG_SAVED);
 				jumpscares_enabled = game::Dvar_RegisterBool("wwz_zm_jumpscares", true, game::DVAR_FLAG_SAVED);
 
 				add_function("replacefunc", scr_replace_func);

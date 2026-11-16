@@ -123,32 +123,46 @@ local function add_spawn_cover( hud )
 	end
 end
 
-local function hide_crosshair_with_scoreboard( hud, controller )
+local function hide_crosshair( hud, controller )
 	-- cg_drawCrosshair (hashed 1874) is set by the match scripts and not saved; the player's
-	-- crosshair option is ui_drawCrosshair, so this toggle leaves their setting alone.
+	-- crosshair option is ui_drawCrosshair, so these toggles leave their setting alone.
+	-- The scoreboard and a disabled HUD (wwz_zm_hud in WWZ-MOD Options) both hide it.
 	local open = DataSources.inGame.HUD.scoreboardOpen
-	local hidden, logged = false, false
+	local hidden, logged = false, {}
+	local function refresh()
+		local scoreboard = open:GetValue( controller ) == true
+		local hud_off = not Engine.GetDvarBool( "wwz_zm_hud" )
+		if (scoreboard or hud_off) and Engine.GetDvarBool( "1874" ) then
+			hidden = true
+			Engine.SetDvarBool( "1874", false )
+			local reason = scoreboard and "the Zombies scoreboard" or "the disabled Zombies HUD"
+			if not logged[reason] then
+				logged[reason] = true
+				print( "[wwz-mod] Hid the crosshair with " .. reason )
+			end
+		elseif not scoreboard and not hud_off and hidden then
+			hidden = false
+			Engine.SetDvarBool( "1874", true )
+		end
+	end
 	hud:SubscribeToModel( open:GetModel( controller ), function ()
-		local visible = open:GetValue( controller )
-		if visible then
+		if open:GetValue( controller ) then
 			-- Lets a reported spot (stray fog, an out-of-bounds drop) be found from the log.
 			local ok, origin = pcall( Game.GetEntityOrigin, Game.GetPlayerClientnum() )
 			if ok and type( origin ) == "table" and origin[1] then
 				print( string.format( "[wwz-mod] Scoreboard opened at (%.0f, %.0f, %.0f)", origin[1], origin[2], origin[3] ) )
 			end
 		end
-		if visible and not hidden and Engine.GetDvarBool( "1874" ) then
-			hidden = true
-			Engine.SetDvarBool( "1874", false )
-			if not logged then
-				logged = true
-				print( "[wwz-mod] Hid the crosshair behind the Zombies scoreboard" )
-			end
-		elseif not visible and hidden then
-			hidden = false
-			Engine.SetDvarBool( "1874", true )
-		end
+		refresh()
 	end )
+	-- WWZ-MOD Options gates the HUD from handlers on the HUD itself; keep these on their own element.
+	-- Spawning sets cg_drawCrosshair again, so watch it while the HUD is off.
+	local watcher = LUI.UIElement.new()
+	watcher.id = "wwz_crosshair_watcher"
+	hud:addElement( watcher )
+	watcher:registerDvarHandler( "wwz_zm_hud", refresh )
+	watcher:registerDvarHandler( "1874", refresh )
+	refresh()
 end
 
 local build_hud = builders.ZMHud
@@ -156,7 +170,7 @@ if build_hud then
 	builders.ZMHud = function ( menu, properties )
 		local hud = build_hud( menu, properties )
 		add_spawn_cover( hud )
-		hide_crosshair_with_scoreboard( hud, properties and properties.controllerIndex or hud:getRootController() )
+		hide_crosshair( hud, properties and properties.controllerIndex or hud:getRootController() )
 		if hud.SpecialAbilityPrompt then
 			align_ability_prompt( hud.SpecialAbilityPrompt )
 		end
