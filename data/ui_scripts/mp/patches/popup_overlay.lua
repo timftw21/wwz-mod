@@ -1,11 +1,11 @@
-if game:issingleplayer() or not Engine.InFrontend() then
+if game:issingleplayer() or (not Engine.InFrontend() and not Engine.IsZombiesMode()) then
 	return
 end
 
 local build_popup = LUI.MenuGenerics.generic_selectionList_popup
 local function fullscreen_popup( menu, properties )
 	local popup = build_popup( menu, properties )
-	if popup._wwzFullscreenOverlay then
+	if popup._wwzFullscreenOverlay or not (Engine.InFrontend() or properties.wwzFullscreenOverlay) then
 		return popup
 	end
 	local intermediate = assert( popup:getChildById( "generic_selectionList_intermediate" ),

@@ -158,20 +158,26 @@ namespace game
 	static_assert(sizeof(XModelLodInfo) == 80);
 	static_assert(offsetof(XModelLodInfo, surfaces) == 72);
 
-	// Partial layout through the LOD count.
+	// Partial layout through the authored LOD distance flag.
 	struct XModel
 	{
-		std::uint8_t unknown00[8];
+		const char* name;
 		std::uint16_t bone_count;
 		std::uint8_t unknown0A[118];
 		const DObjAnimMat* base_pose;
 		XModelLodInfo lods[6];
 		std::uint8_t lod_count;
+		std::uint8_t unknown269[0x43];
+		float lod_triangle_area[6];
+		float lod_radius;
+		std::uint8_t use_lod_distances;
 	};
 
 	static_assert(offsetof(XModel, base_pose) == 128);
 	static_assert(offsetof(XModel, lods) == 136);
 	static_assert(offsetof(XModel, lod_count) == 616);
+	static_assert(offsetof(XModel, lod_triangle_area) == 0x2AC);
+	static_assert(offsetof(XModel, use_lod_distances) == 0x2C8);
 
 	// Partial layout through the composite part count.
 	struct XModelBase

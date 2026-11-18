@@ -37,6 +37,7 @@ PCOptionsUtils.PreLoad = function ( menu, properties )
 		add_toggle( rows, "Jumpscare Zombies", "Allow optional environmental jumpscares when you host Zombies.", jumpscares )
 		add_toggle( rows, "HUD Activity Stream", "Show purchase and other activity messages on the Zombies HUD.", feed )
 		add_toggle( rows, "Objective Text", "Show objective hints and the key prompt on the Zombies HUD.", objectives )
+		add_toggle( rows, "OBJECTIVE OUTLINES", "Show white outlines on Zombies quest items and interactable objects.", "wwz_zm_objective_outlines" )
 		add_toggle( rows, "Double XP", "Earn double Zombies XP when you host, and show the Double XP icons.", double_xp )
 		scoped.gridData = rows
 	else

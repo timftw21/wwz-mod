@@ -41,21 +41,38 @@ local function move_context_hints( hud )
 	print( "[wwz-mod] Moved Zombies contextual hints to the upper right" )
 end
 
-local function add_objective_scoreboard( inventory, hints, controller, icon_set )
+local function add_objective_scoreboard( inventory, hud, controller, icon_set )
 	local open = DataSources.inGame.HUD.scoreboardOpen
+	local hints, round = hud.zm_QuestHintWidget0, hud.zm_RoundWidget0
+	local notebook_rise = 44 * _1080p
+	local update_round_position
 	local hint_top, hint_bottom
 	if hints then
 		local _, top, _, bottom = hints:getLocalRect()
 		hint_top, hint_bottom = top, bottom
+		if round then
+			local countdown = DataSources.inGame.HUD.match.roundStartCountdown
+			local _, round_top = round:getLocalRect()
+			update_round_position = function ()
+				-- Keep the stock gap between "Next wave" and the first notebook heading.
+				local raised = open:GetValue( controller ) and (countdown:GetValue( controller ) or 0) > 0
+				round:setTop( round_top - (raised and notebook_rise or 0), 0 )
+			end
+			inventory:SubscribeToModel( countdown:GetModel( controller ), update_round_position )
+			print( "[wwz-mod] Reserved room for the wave countdown above notebook objectives" )
+		end
 	end
 	local board
 	inventory:SubscribeToModel( open:GetModel( controller ), function ()
 		local visible = open:GetValue( controller )
 		if hint_top then
 			-- Leave room for four full-size rows beneath the quest text.
-			local rise = visible and 44 * _1080p or 0
+			local rise = visible and notebook_rise or 0
 			hints:setTop( hint_top - rise, 0 )
 			hints:setBottom( hint_bottom - rise, 0 )
+		end
+		if update_round_position then
+			update_round_position()
 		end
 		if visible then
 			if not board then
@@ -97,7 +114,7 @@ if builders.ZMHud then
 		if inventory then
 			move_context_hints( hud )
 			if not inventory.zm_scoreboard_s2_dlc3 then
-				add_objective_scoreboard( inventory, hud.zm_QuestHintWidget0, controller, properties and properties.fontIconSet )
+				add_objective_scoreboard( inventory, hud, controller, properties and properties.fontIconSet )
 			end
 		end
 		return hud
