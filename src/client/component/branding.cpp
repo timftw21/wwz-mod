@@ -11,6 +11,8 @@ namespace branding
 {
 	namespace
 	{
+		constexpr char version_label[] = "WWZ-MOD 0.3";
+
 		void draw_branding()
 		{
 			constexpr auto x = 5;
@@ -20,7 +22,7 @@ namespace branding
 			const auto* font = game::R_RegisterFont("fonts/fira_mono_regular.ttf", 16);
 			if (!font) return;
 
-			game::R_AddCmdDrawText("WWZ-MOD 0.2", 0x7fffffff, font, 0, 0, font->pixelHeight, x, y, 1.0f, 1.0f, 0.0f, color, nullptr);
+			game::R_AddCmdDrawText(version_label, 0x7fffffff, font, 0, 0, font->pixelHeight, x, y, 1.0f, 1.0f, 0.0f, color, nullptr);
 		}
 
 		int multi_byte_to_wide_char_stub(UINT CodePage, DWORD dwFlags, LPCCH lpMultiByteStr, int cbMultiByte, LPWSTR lpWideCharStr, int cchWideChar)
@@ -34,7 +36,7 @@ namespace branding
 		void post_unpack() override
 		{
 			scheduler::loop(draw_branding, scheduler::renderer);
-			console::debug("[Branding] Overlay set to WWZ-MOD 0.2.\n");
+			console::debug("[Branding] Overlay set to %s.\n", version_label);
 
 			// Change window title prefix
 			if (game::environment::uses_multiplayer_binary())
