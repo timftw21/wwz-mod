@@ -1,11 +1,15 @@
-if game:issingleplayer() or (not Engine.InFrontend() and not Engine.IsZombiesMode()) then
+if game:issingleplayer() then
 	return
 end
 
-local build_popup = LUI.MenuGenerics.generic_selectionList_popup
-local function fullscreen_popup( menu, properties )
-	local popup = build_popup( menu, properties )
-	if popup._wwzFullscreenOverlay or not (Engine.InFrontend() or properties.wwzFullscreenOverlay) then
+-- Keep the menu context from UI startup, as in the original lobby fix.
+local frontend = Engine.InFrontend()
+if not frontend and not Engine.IsZombiesMode() then
+	return
+end
+
+local function fullscreen_overlay( popup )
+	if popup._wwzFullscreenOverlay then
 		return popup
 	end
 	local intermediate = assert( popup:getChildById( "generic_selectionList_intermediate" ),
@@ -22,9 +26,26 @@ local function fullscreen_popup( menu, properties )
 	return popup
 end
 
+local build_popup = LUI.MenuGenerics.generic_selectionList_popup
+local function fullscreen_popup( menu, properties )
+	local popup = build_popup( menu, properties )
+	if frontend or properties.wwzFullscreenOverlay then
+		return fullscreen_overlay( popup )
+	end
+	return popup
+end
+
 LUI.MenuGenerics.generic_selectionList_popup = fullscreen_popup
 local builders = LUI.MenuBuilder.m_types_build
 if builders.generic_selectionList_popup == build_popup then
 	builders.generic_selectionList_popup = fullscreen_popup
 end
-print( "[wwz-mod] Full-screen popup overlays installed (including clan-tag keyboard)" )
+
+-- Custom Tag and direct numeric entry both open this registered keyboard.
+local build_keyboard = builders.virtual_keyboard
+if build_keyboard then
+	builders.virtual_keyboard = function ( menu, properties )
+		return fullscreen_overlay( build_keyboard( menu, properties ) )
+	end
+end
+print( "[wwz-mod] Installed full-screen overlays for lobby popups and text entry" )

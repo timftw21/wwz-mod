@@ -1,7 +1,17 @@
 # WWZ-MOD
 A zombies-focused fork of s2x-mod, featuring fixes, gameplay tweaks, and additions. 
 
+## Version 0.4
+
+- You can now jump over crawling zombies.
+- Armor costs at most 3,000 Jolts per purchase, before discounts.
+- Spotlight shadows on scenery stay visible farther away as you back up. Their draw-distance multiplier is now 16× the stock value.
+- The black overlay behind Custom Tag and FOV entry fills the screen again.
+
+To install or update, extract the release ZIP into your Steam **Call of Duty: WWII** folder, alongside `s2_mp64_ship.exe`. Allow it to replace existing mod files, then launch `s2x.exe`. [Download WWZ-MOD 0.4](https://github.com/timftw21/wwz-mod/releases/download/v0.4/wwz-mod-0.4.zip)
+
 So, what's changed?
+
 - A slew of tweaks, polish, and fixes to menus and subtitles.
 - The Darkest Shore's boss fight has been made fairer for solo players.
 - Added "Downs" section to the scoreboard.

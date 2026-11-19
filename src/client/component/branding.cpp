@@ -11,7 +11,7 @@ namespace branding
 {
 	namespace
 	{
-		constexpr char version_label[] = "WWZ-MOD 0.3";
+		constexpr char version_label[] = "WWZ-MOD 0.4";
 
 		void draw_branding()
 		{

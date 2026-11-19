@@ -91,26 +91,78 @@ namespace zombies_shadows
 		static_assert(offsetof(scene_light, radius) == 0x3C);
 		static_assert(sizeof(scene_light) == 0xB0);
 
+		constexpr unsigned spot_shadow_distance_scale = 16;
+
+		void setup_shadow_settings(std::byte* scene, std::byte* view, const std::byte* settings)
+		{
+			utils::hook::invoke<void>(0xEC0A0_g, scene, view, settings);
+
+			// Raising every light's score still leaves the same nearest lights on top.
+			// Allow more of them to cast and refresh shadows within the selector's
+			// native limits (0x8B5520 and 0x8B554A). Zero still disables a budget.
+			constexpr unsigned budget_scale = 4;
+			auto& priority = *reinterpret_cast<unsigned*>(view + 0x1C44);
+			auto& updates = *reinterpret_cast<unsigned*>(view + 0x1C50);
+			priority = std::min(std::min(priority, 16u) * budget_scale, 16u);
+			updates = std::min(std::min(updates, 8u) * budget_scale, 8u);
+		}
+
+		void* scaled_distance_stub(const asmjit::x86::Vec result)
+		{
+			// XMM2 holds squared distance. Preserve the other registers and flags:
+			// the prop renderer branches on a comparison made before the square root.
+			return utils::hook::assemble([result](utils::hook::assembler& a)
+			{
+				const auto inverse_scale = a.new_label();
+				a.sqrtss(result, xmm2);
+				a.mulss(result, dword_ptr(inverse_scale));
+				a.ret();
+				a.bind(inverse_scale);
+				a.embed_float(1.0f / spot_shadow_distance_scale);
+			});
+		}
+
+		std::array<float, 3> scaled_volume_eye(const float* origin, const float* eye)
+		{
+			std::array<float, 3> scaled;
+			for (size_t i = 0; i < scaled.size(); ++i)
+			{
+				scaled[i] = origin[i] + (eye[i] - origin[i]) / spot_shadow_distance_scale;
+			}
+			return scaled;
+		}
+
+		bool cull_spot_volume(const std::byte* primary_light, const float* eye, const float margin)
+		{
+			const auto* origin = reinterpret_cast<const float*>(primary_light + 0x34);
+			const auto scaled = scaled_volume_eye(origin, eye);
+			return utils::hook::invoke<bool>(0x8B4EE0_g, primary_light, scaled.data(), margin);
+		}
+
+		bool cull_spot_hulls(const void* hulls, const float* origin, const float* eye, const float margin)
+		{
+			const auto scaled = scaled_volume_eye(origin, eye);
+			return utils::hook::invoke<bool>(0x8B6090_g, hulls, origin, scaled.data(), margin);
+		}
+
 		void select_spot_shadows(std::byte* scene, const unsigned* visible, const unsigned* moving,
 			const std::byte* view)
 		{
 			// The native selector reads ceil(light_count / 32) words. Work on a
 			// private mask so offscreen lights stay culled from the lighting pass.
-			std::array<unsigned, 0x104 / sizeof(unsigned)> candidates;
+			constexpr unsigned max_scene_lights = 0x819; // First invalid light in the native cache lookup tables.
+			std::array<unsigned, (max_scene_lights + 31) / 32> candidates;
 			const auto count = field<unsigned>(view, 0x1D8);
-			if (count <= candidates.size() * 32)
+			if (count <= max_scene_lights)
 			{
 				std::copy_n(visible, (count + 31) / 32, candidates.begin());
 				const auto eye = field<std::array<float, 3>>(view, 0x100);
 				const auto* lights = reinterpret_cast<const scene_light*>(scene + 0xC8FA00);
-				// These are the same resident slots the engine visits to associate
-				// a moving character with local shadow lights (0x8B7189).
-				const auto* slots = utils::hook::invoke<const std::byte*>(0x8F81B0_g, scene);
-				const auto slots_count = utils::hook::invoke<unsigned>(0x8F8290_g, scene);
-				for (unsigned i = 0; slots && i < slots_count; ++i)
+				// A light can enter shadow range before it has a cache slot. The
+				// scorer still enforces the world's light visibility and shadow flags.
+				for (unsigned index = 0; index < count; ++index)
 				{
-					const auto index = field<unsigned>(slots + i * 0xB0, 0x80);
-					if (index >= count || (candidates[index / 32] & (1u << (index % 32))))
+					if (candidates[index / 32] & (1u << (index % 32)))
 					{
 						continue;
 					}
@@ -122,7 +174,8 @@ namespace zombies_shadows
 					const auto delta_x = eye[0] - light.origin[0];
 					const auto delta_y = eye[1] - light.origin[1];
 					const auto delta_z = eye[2] - light.origin[2];
-					if (light.radius > 0 && delta_x * delta_x + delta_y * delta_y + delta_z * delta_z < light.radius * light.radius)
+					const float range = light.radius * spot_shadow_distance_scale;
+					if (range > 0 && delta_x * delta_x + delta_y * delta_y + delta_z * delta_z < range * range)
 					{
 						candidates[index / 32] |= 1u << (index % 32);
 					}
@@ -160,21 +213,52 @@ namespace zombies_shadows
 				console::error("[Shadows] Unexpected character renderer. Skipped first-person shadows.\n");
 			}
 
-			// R_ScoreSpotLight normally measures from a point projected along the
-			// camera axis. Score from the eye so turning in place keeps distances stable.
-			constexpr std::uint8_t load_projection[] = {0xF3, 0x0F, 0x10, 0x2D, 0x68, 0x5E, 0xC2, 0x00};
+			// Static-model submission, cached-model validation and dynamic-light
+			// submission each measure the camera distance independently.
+			const std::uintptr_t caster_sites[] = {0x86541D_g, 0x86635D_g, 0x864216_g};
+			constexpr std::uint8_t distance_code[] = {0xF3, 0x0F, 0x10, 0xF2, 0xF3, 0x0F, 0x51, 0xF6};
+			for (const auto site : caster_sites)
+			{
+				if (std::memcmp(reinterpret_cast<const void*>(site), distance_code, sizeof(distance_code)) != 0)
+				{
+					console::error("[Shadows] Unexpected spotlight caster distance check. Skipped spotlight changes.\n");
+					return;
+				}
+			}
+
+			// Keep the stock beam center for ranking, with no offset along the camera
+			// axis. Scaling the eye about the lamp origin here would move that center.
+			constexpr std::uint8_t camera_projection[] = {0xF3, 0x0F, 0x10, 0x2D, 0x68, 0x5E, 0xC2, 0x00};
 			constexpr std::uint8_t zero_projection[] = {0x0F, 0x57, 0xED, 0x0F, 0x1F, 0x44, 0x00, 0x00};
-			if (calls(0xECCBD_g, 0x8B54F0_g) &&
-				std::memcmp(reinterpret_cast<void*>(0x8B51CC_g), load_projection, sizeof(load_projection)) == 0)
+			constexpr std::uint8_t score_distance[] = {0xF3, 0x44, 0x0F, 0x51, 0xC2};
+			if (!calls(0x6A849_g, 0xEC0A0_g) || !calls(0xECCBD_g, 0x8B54F0_g) ||
+				!calls(0x8B53D7_g, 0x8B4EE0_g) || !calls(0x8B5407_g, 0x8B6090_g) ||
+				std::memcmp(reinterpret_cast<const void*>(0x8B51CC_g), camera_projection, sizeof(camera_projection)) ||
+				std::memcmp(reinterpret_cast<const void*>(0x8B52C6_g), score_distance, sizeof(score_distance)))
 			{
-				utils::hook::copy(0x8B51CC_g, zero_projection, sizeof(zero_projection));
-				utils::hook::call(0xECCBD_g, select_spot_shadows);
-				console::debug("[Shadows] Enabled position-based spotlight selection and nearby shadow retention.\n");
+				console::error("[Shadows] Unexpected spotlight selector or settings. Skipped spotlight changes.\n");
+				return;
 			}
-			else
+
+			auto* caster_distance = scaled_distance_stub(xmm6);
+			auto* beam_distance = scaled_distance_stub(xmm8);
+			if (!caster_distance || !beam_distance)
 			{
-				console::error("[Shadows] Unexpected spotlight selector. Skipped nearby shadow retention.\n");
+				console::error("[Shadows] Could not create spotlight distance hooks.\n");
+				return;
 			}
+			for (const auto site : caster_sites)
+			{
+				utils::hook::call(site, caster_distance);
+				utils::hook::nop(site + 5, sizeof(distance_code) - 5);
+			}
+			utils::hook::copy(0x8B51CC_g, zero_projection, sizeof(zero_projection));
+			utils::hook::call(0x8B52C6_g, beam_distance);
+			utils::hook::call(0x8B53D7_g, cull_spot_volume);
+			utils::hook::call(0x8B5407_g, cull_spot_hulls);
+			utils::hook::call(0x6A849_g, setup_shadow_settings);
+			utils::hook::call(0xECCBD_g, select_spot_shadows);
+			console::info("[Shadows] Enabled %ux spotlight selection and caster draw distance.\n", spot_shadow_distance_scale);
 		}
 	};
 }

@@ -147,6 +147,29 @@ namespace utils::hook
 		}
 
 		template <typename... Args>
+		asmjit::Error movss(Args&&... args)
+		{
+			return this->assembler_.movss(std::forward<Args>(args)...);
+		}
+
+		template <typename... Args>
+		asmjit::Error sqrtss(Args&&... args)
+		{
+			return this->assembler_.sqrtss(std::forward<Args>(args)...);
+		}
+
+		template <typename... Args>
+		asmjit::Error mulss(Args&&... args)
+		{
+			return this->assembler_.mulss(std::forward<Args>(args)...);
+		}
+
+		asmjit::Error embed_float(float value)
+		{
+			return this->assembler_.embed_float(value);
+		}
+
+		template <typename... Args>
 		asmjit::Error or_(Args&&... args)
 		{
 			return this->assembler_.or_(std::forward<Args>(args)...);
